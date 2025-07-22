@@ -22,6 +22,10 @@ namespace ClipShare.Controllers
     [Authorize(Roles = $"{SD.UserRole}")]
     public class VideoController : CoreController
     {
+        // ===================== PHẦN 1: NGƯỜI 1 PHỤ TRÁCH =====================
+        // Các chức năng: Xem video, tạo/sửa video, upload file, tải file, comment, lấy file video
+
+        // --- [NGƯỜI 1] Xem video ---
         public async Task<IActionResult> Watch(int id)
         {
             // inefficient way of fetching the videos with lots of include properties with uneccessary columns
@@ -43,6 +47,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
+        // --- [NGƯỜI 1] Bình luận video ---
         [HttpPost]
         public async Task<IActionResult> CreateComment(Comment_vm model)
         {
@@ -59,6 +64,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
+        // --- [NGƯỜI 1] Lấy file video để phát ---
         public async Task<IActionResult> GetVideoFile(int videoId)
         {
             var fetcehdVideoFile = await UnitOfWork.VideoFileRepo.GetFirstOrDefaultAsync(x => x.VideoId == videoId);
@@ -71,6 +77,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
+        // --- [NGƯỜI 1] Tải file video về máy ---
         public async Task<IActionResult> DownloadVideoFile(int videoId)
         {
             var fetchedVideo = await UnitOfWork.VideoRepo.GetFirstOrDefaultAsync(x => x.Id == videoId, "VideoFile");
@@ -84,6 +91,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
+        // --- [NGƯỜI 1] Giao diện tạo/sửa video (GET) ---
         public async Task<IActionResult> CreateEditVideo(int id)
         {
             if (!await UnitOfWork.ChannelRepo.AnyAsync(x => x.AppUserId == User.GetUserId()))
@@ -126,6 +134,7 @@ namespace ClipShare.Controllers
             return View(toReturn);
         }
 
+        // --- [NGƯỜI 1] Xử lý tạo/sửa video (POST) ---
         [HttpPost]
         public async Task<IActionResult> CreateEditVideo(VideoAddEdit_vm model)
         {
@@ -245,7 +254,11 @@ namespace ClipShare.Controllers
             return View(model);
         }
 
+        // ===================== PHẦN 2: NGƯỜI 2 PHỤ TRÁCH =====================
+        // Các chức năng: API lấy danh sách video, xóa video, like/dislike, subscribe channel
+
         #region API Endpoints
+        // --- [NGƯỜI 2] API lấy danh sách video cho channel (dùng cho grid) ---
         [HttpGet]
         public async Task<IActionResult> GetVideosForChannelGrid(BaseParameters parameters)
         {
@@ -257,6 +270,7 @@ namespace ClipShare.Controllers
             return Json(new ApiResponse(200, result: paginatedResults));
         }
 
+        // --- [NGƯỜI 2] Xóa video (API) ---
         [HttpDelete]
         public async Task<IActionResult> DeleteVideo(int id)
         {
@@ -281,6 +295,7 @@ namespace ClipShare.Controllers
         }
 
 
+        // --- [NGƯỜI 2] Đăng ký/hủy đăng ký kênh (API) ---
         [HttpPut]
         public async Task<IActionResult> SubscribeChannel(int channelId)
         {
@@ -311,6 +326,7 @@ namespace ClipShare.Controllers
             return Json(new ApiResponse(404, message: "Channel was not found"));
         }
 
+        // --- [NGƯỜI 2] Like/Dislike video (API) ---
         [HttpPut]
         public async Task<IActionResult> LikeDislikeVideo(int videoId, string action, bool like)
         {
@@ -394,6 +410,8 @@ namespace ClipShare.Controllers
         }
         #endregion
 
+        // ===================== CẢ HAI NGƯỜI CÓ THỂ THAM KHẢO =====================
+        // Các hàm private/phụ trợ dùng chung cho controller
         #region Private Methods
         public async Task<IEnumerable<SelectListItem>> GetCategoryDropdownAsync()
         {
