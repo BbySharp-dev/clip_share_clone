@@ -13,9 +13,12 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace ClipShare.Controllers
+// ===================== TOÀN BỘ CONTROLLER NÀY DO USER 5 PHỤ TRÁCH =====================
+// Quản lý kênh: xem, tạo, sửa, analytics kênh
 {
     [Authorize(Roles = $"{SD.UserRole}")]
     public class ChannelController : CoreController
+        // --- [USER 5] Trang chủ kênh, hiển thị thông tin kênh ---
     {
         public async Task<IActionResult> Index(string stringModel)
         {
@@ -52,6 +55,7 @@ namespace ClipShare.Controllers
 
         [HttpPost]
         public async Task<IActionResult> CreateChannel(ChannelAddEdit_vm model)
+        // --- [USER 5] Tạo kênh mới ---
         {
             if (!ModelState.IsValid)
             {
@@ -103,6 +107,7 @@ namespace ClipShare.Controllers
 
         [HttpPost]
         public async Task<IActionResult> EditChannel(ChannelAddEdit_vm model)
+        // --- [USER 5] Sửa thông tin kênh ---
         {
             if (ModelState.IsValid)
             {
@@ -129,6 +134,7 @@ namespace ClipShare.Controllers
         //
           [HttpGet]
         public async Task<IActionResult> Analytics()
+        // --- [USER 5] Thống kê/analytics kênh ---
         {
             var userId = User.GetUserId();
             var channel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(x => x.AppUserId == userId, includeProperties: "Videos,Subscribers");

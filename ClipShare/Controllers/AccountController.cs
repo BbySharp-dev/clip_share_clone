@@ -12,9 +12,13 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
+// ===================== TOÀN BỘ CONTROLLER NÀY DO USER 6 PHỤ TRÁCH =====================
+// Quản lý tài khoản: đăng nhập, đăng ký, đăng xuất, kiểm tra quyền truy cập
+
 namespace ClipShare.Controllers
 {
     public class AccountController : Controller
+        // --- [USER 6] Trang đăng nhập (GET) ---
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly SignInManager<AppUser> _signInManager;
@@ -43,6 +47,7 @@ namespace ClipShare.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(Login_vm model)
+        // --- [USER 6] Xử lý đăng nhập (POST) ---
         {
             if (!ModelState.IsValid)
             {
@@ -87,6 +92,7 @@ namespace ClipShare.Controllers
 
         [HttpGet]
         public IActionResult Register()
+        // --- [USER 6] Trang đăng ký (GET) ---
         {
             return View();
         }
@@ -94,6 +100,7 @@ namespace ClipShare.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(Register_vm model)
+        // --- [USER 6] Xử lý đăng ký (POST) ---
         {
             if (ModelState.IsValid)
             {
@@ -148,6 +155,7 @@ namespace ClipShare.Controllers
 
         [HttpGet]
         public async Task<IActionResult> Logout()
+        // --- [USER 6] Đăng xuất ---
         {
             await _signInManager.SignOutAsync();
             return RedirectToAction("Index", "Home");
@@ -155,12 +163,16 @@ namespace ClipShare.Controllers
 
         [HttpGet]
         public IActionResult AccessDenied()
+        // --- [USER 6] Truy cập bị từ chối ---
         {
             return View();
         }
 
 
         #region Private Methods
+
+        // =====================  USER 6 CÓ THỂ THAM KHẢO =====================
+        // Các hàm private/phụ trợ dùng chung cho controller
         private async Task<bool> CheckEmailExistsAsync(string email)
         {
             return await _userManager.Users.AnyAsync(x => x.Email == email.ToLower());
