@@ -25,6 +25,10 @@ namespace ClipShare.Controllers
             _userManager = userManager;
             _roleManager = roleManager;
         }
+        // ===================== PHẦN 1: USER 3 PHỤ TRÁCH =====================
+        // Quản lý user, role, khóa/mở user, xóa user, các chức năng liên quan đến người dùng
+
+        // --- [USER 3] Quản lý danh sách user ---
         public IActionResult Category()
         {
             return View();
@@ -50,6 +54,7 @@ namespace ClipShare.Controllers
             return View(toReturn);
         }
 
+        // --- [USER 3] Giao diện thêm/sửa user (GET) ---
         public async Task<IActionResult> AddEditUser(int id)
         {
             var toReturn = new UserAddEdit_vm();
@@ -67,6 +72,8 @@ namespace ClipShare.Controllers
 
             return View(toReturn);
         }
+
+        // --- [USER 3] Xử lý thêm/sửa user (POST) ---
 
         [HttpPost]
         public async Task<IActionResult> AddEditUser(UserAddEdit_vm model)
@@ -213,6 +220,8 @@ namespace ClipShare.Controllers
             return View(model);
         }
 
+        // --- [USER 3] Khóa user ---
+
         [HttpPost]
         public async Task<IActionResult> LockUser(int id)
         {
@@ -242,6 +251,8 @@ namespace ClipShare.Controllers
             return RedirectToAction("AllUsers");
         }
 
+        // --- [USER 3] Mở khóa user ---
+
         [HttpPost]
         public async Task<IActionResult> UnlockUser(int id)
         {
@@ -270,81 +281,8 @@ namespace ClipShare.Controllers
             return RedirectToAction("AllUsers");
         }
 
-        #region API Endpoints
 
-        [HttpGet]
-        public async Task<IActionResult> GetCategories()
-        {
-            var categories = await UnitOfWork.CategoryRepo.GetAllAsync();
-            var toReturn = categories.Select(x => new CategoryAddEdit_vm
-            {
-                Id = x.Id,
-                Name = x.Name,
-            });
-
-            return Json(new ApiResponse(200, result: toReturn));
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> AddEditCategory(CategoryAddEdit_vm model)
-        {
-            if (ModelState.IsValid)
-            {
-                if (model.Id == 0)
-                {
-                    UnitOfWork.CategoryRepo.Add(new Category() { Name = model.Name });
-                    await UnitOfWork.CompleteAsync();
-                    return Json(new ApiResponse(201, "Created", "New Category was added"));
-                }
-                else
-                {
-                    var category = await UnitOfWork.CategoryRepo.GetByIdAsync(model.Id);
-                    if (category == null) return Json(new ApiResponse(404));
-
-                    var oldName = category.Name;
-                    category.Name = model.Name;
-                    await UnitOfWork.CompleteAsync();
-                    return Json(new ApiResponse(200, "Editted", $"Category of {oldName} has been renamed to {model.Name}"));
-                }
-            }
-
-            return Json(new ApiResponse(400, message: "Name is required"));
-        }
-
-        [HttpDelete]
-        public async Task<IActionResult> DeleteCategory(int id)
-        {
-            var category = await UnitOfWork.CategoryRepo.GetByIdAsync(id);
-            if (category != null)
-            {
-                var categoryVideoIdsAndThumbnailUrls = await Context.Video
-                    .Where(x => x.CategoryId == id)
-                    .Select(x => new
-                    {
-                        x.Id,
-                        x.ThumbnailUrl
-                    })
-                    .ToListAsync();
-
-                if (categoryVideoIdsAndThumbnailUrls.Any())
-                {
-                    foreach (var video in categoryVideoIdsAndThumbnailUrls)
-                    {
-                        PhotoService.DeletePhotoLocally(video.ThumbnailUrl);
-                        await UnitOfWork.VideoRepo.RemoveVideoAsync(video.Id);
-                        await UnitOfWork.CompleteAsync();
-                    }
-                }
-
-                UnitOfWork.CategoryRepo.Remove(category);
-                await UnitOfWork.CompleteAsync();
-
-                return Json(new ApiResponse(200, "Deleted", "Category of " + category.Name + " has been removed"));
-            }
-
-            return Json(new ApiResponse(404, message: "The requested category was not found"));
-        }
-
+        // --- [USER 3] Xóa user (API) ---
         [HttpDelete]
         public async Task<IActionResult> DeleteUser(int id)
         {
@@ -395,8 +333,136 @@ namespace ClipShare.Controllers
 
             return Json(new ApiResponse(404, message: "The requested user was not found"));
         }
+
+        #region API Endpoints
+        // ===================== PHẦN 2: USER 4 PHỤ TRÁCH =====================
+        // Quản lý category, video chờ duyệt, duyệt video, xóa video, xem video, các chức năng liên quan đến video & category
+
+        // --- [USER 4] API lấy danh sách category ---
+        [HttpGet]
+        public async Task<IActionResult> GetCategories()
+        {
+            var categories = await UnitOfWork.CategoryRepo.GetAllAsync();
+            var toReturn = categories.Select(x => new CategoryAddEdit_vm
+            {
+                Id = x.Id,
+                Name = x.Name,
+            });
+
+            return Json(new ApiResponse(200, result: toReturn));
+        }
+
+        // --- [USER 4] Thêm/sửa category (API) ---
+        [HttpPost]
+        public async Task<IActionResult> AddEditCategory(CategoryAddEdit_vm model)
+        {
+            if (ModelState.IsValid)
+            {
+                if (model.Id == 0)
+                {
+                    UnitOfWork.CategoryRepo.Add(new Category() { Name = model.Name });
+                    await UnitOfWork.CompleteAsync();
+                    return Json(new ApiResponse(201, "Created", "New Category was added"));
+                }
+                else
+                {
+                    var category = await UnitOfWork.CategoryRepo.GetByIdAsync(model.Id);
+                    if (category == null) return Json(new ApiResponse(404));
+
+                    var oldName = category.Name;
+                    category.Name = model.Name;
+                    await UnitOfWork.CompleteAsync();
+                    return Json(new ApiResponse(200, "Editted", $"Category of {oldName} has been renamed to {model.Name}"));
+                }
+            }
+
+            return Json(new ApiResponse(400, message: "Name is required"));
+        }
+
+        // --- [USER 4] Xóa category (API) ---
+        [HttpDelete]
+        public async Task<IActionResult> DeleteCategory(int id)
+        {
+            var category = await UnitOfWork.CategoryRepo.GetByIdAsync(id);
+            if (category != null)
+            {
+                var categoryVideoIdsAndThumbnailUrls = await Context.Video
+                    .Where(x => x.CategoryId == id)
+                    .Select(x => new
+                    {
+                        x.Id,
+                        x.ThumbnailUrl
+                    })
+                    .ToListAsync();
+
+                if (categoryVideoIdsAndThumbnailUrls.Any())
+                {
+                    foreach (var video in categoryVideoIdsAndThumbnailUrls)
+                    {
+                        PhotoService.DeletePhotoLocally(video.ThumbnailUrl);
+                        await UnitOfWork.VideoRepo.RemoveVideoAsync(video.Id);
+                        await UnitOfWork.CompleteAsync();
+                    }
+                }
+
+                UnitOfWork.CategoryRepo.Remove(category);
+                await UnitOfWork.CompleteAsync();
+
+                return Json(new ApiResponse(200, "Deleted", "Category of " + category.Name + " has been removed"));
+            }
+
+            return Json(new ApiResponse(404, message: "The requested category was not found"));
+        }
+
+
         #endregion
 
+
+
+        // --- [USER 4] Xem danh sách video chờ duyệt ---
+        [HttpGet]
+        public async Task<IActionResult> PendingVideos()
+        {
+            var videos = await Context.Video
+                .Where(x => !x.IsApproved)
+                .ToListAsync();
+            return View(videos);
+        }
+        // --- [USER 4] Duyệt video ---
+        [HttpPost]
+        public async Task<IActionResult> ApproveVideo(int id)
+        {
+            var video = await Context.Video.FindAsync(id);
+            if (video == null) return NotFound();
+            video.IsApproved = true;
+            await Context.SaveChangesAsync();
+            return RedirectToAction("PendingVideos");
+        }
+
+        // --- [USER 4] Xem chi tiết video ---
+        [HttpGet]
+        public async Task<IActionResult> ViewVideo(int id)
+        {
+            var video = await Context.Video
+                .Include(v => v.Channel)
+                .FirstOrDefaultAsync(v => v.Id == id);
+            if (video == null) return NotFound();
+            return View(video);
+        }
+
+        // --- [USER 4] Xóa video (POST) ---
+        [HttpPost]
+        public async Task<IActionResult> DeleteVideo(int id)
+        {
+            var video = await Context.Video.FindAsync(id);
+            if (video == null) return NotFound();
+            Context.Video.Remove(video);
+            await Context.SaveChangesAsync();
+            return RedirectToAction("PendingVideos");
+        }
+
+        // ===================== CẢ HAI USER 3 & 4 CÓ THỂ THAM KHẢO =====================
+        // Các hàm private/phụ trợ dùng chung cho controller
         #region Private Methods
         public async Task<List<string>> GetApplicationRolesAsync()
         {
@@ -420,47 +486,7 @@ namespace ClipShare.Controllers
             return _userManager.FindByIdAsync(userId.ToString()).GetAwaiter().GetResult().UserName.Equals("admin");
         }
         #endregion
-
-
-
-        [HttpGet]
-        public async Task<IActionResult> PendingVideos()
-        {
-            var videos = await Context.Video
-                .Where(x => !x.IsApproved)
-                .ToListAsync();
-            return View(videos); // hoặc return Json(videos) nếu bạn muốn trả về JSON
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> ApproveVideo(int id)
-        {
-            var video = await Context.Video.FindAsync(id);
-            if (video == null) return NotFound();
-            video.IsApproved = true;
-            await Context.SaveChangesAsync();
-            return RedirectToAction("PendingVideos"); // hoặc return Ok() nếu là API
-        }
-
-
-        [HttpGet]
-        public async Task<IActionResult> ViewVideo(int id)
-        {
-            var video = await Context.Video
-                .Include(v => v.Channel)
-                .FirstOrDefaultAsync(v => v.Id == id);
-            if (video == null) return NotFound();
-            return View(video);
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> DeleteVideo(int id)
-        {
-            var video = await Context.Video.FindAsync(id);
-            if (video == null) return NotFound();
-            Context.Video.Remove(video);
-            await Context.SaveChangesAsync();
-            return RedirectToAction("PendingVideos");
-        }
     }
 }
+
+
