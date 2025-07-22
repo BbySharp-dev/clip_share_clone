@@ -1,0 +1,74 @@
+@{
+    ViewData["Title"] = "Channel Analytics";
+    var totalVideos = ViewBag.TotalVideos ?? 0;
+    var totalViews = ViewBag.TotalViews ?? 0;
+    var totalSubscribers = ViewBag.TotalSubscribers ?? 0;
+    var chartLabels = ViewBag.ChartLabels ?? "[]";
+    var chartData = ViewBag.ChartData ?? "[]";
+}
+
+<div class="container py-4">
+    <h2 class="mb-4">Channel Analytics</h2>
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Videos</h5>
+                    <p class="display-6 fw-bold text-primary">@totalVideos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Views</h5>
+                    <p class="display-6 fw-bold text-success">@totalViews</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Subscribers</h5>
+                    <p class="display-6 fw-bold text-danger">@totalSubscribers</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Top 5 Videos by Views</h5>
+            <canvas id="viewsChart" height="120"></canvas>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        var ctx = document.getElementById('viewsChart').getContext('2d');
+        var chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: @Html.Raw(chartLabels),
+                datasets: [{
+                    label: 'Views',
+                    data: @Html.Raw(chartData),
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
+}
