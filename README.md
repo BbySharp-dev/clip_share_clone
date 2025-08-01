@@ -7,7 +7,7 @@
 
 ## 2. Clone và mở project
 ```sh
-git clone <repo-url>
+git clone https://github.com/BbySharp-dev/clip_share_clone.git
 cd ClipShare
 ```
 Mở thư mục này bằng Visual Studio hoặc VS Code.
