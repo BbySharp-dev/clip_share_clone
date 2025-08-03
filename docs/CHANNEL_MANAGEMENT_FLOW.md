@@ -168,6 +168,105 @@ public async Task<IActionResult> Index(string stringModel)
 }
 ```
 
+**Flow chi tiết Dashboard Access:**
+1. **Session Recovery**: Kiểm tra session có preserved error state từ previous request không
+   - Nếu có errors trong session, deserialize và restore vào ModelState
+   - Clear session sau khi restore để tránh data persistence
+   - Return view với errors để user thấy validation messages
+2. **Channel Lookup**: Query database tìm channel của current user
+   - Sử dụng User.GetUserId() extension để lấy user ID từ claims
+   - Include "Subscribers" để load subscriber count efficiently
+   - Sử dụng UnitOfWork pattern để abstract database operations
+3. **Data Population**: Nếu user đã có channel, populate ViewModel với existing data
+   - Load Name, About, và SubscribersCount để display trong dashboard
+   - Nếu chưa có channel, hiển thị create form
+4. **Conditional UI**: View sẽ render create form hoặc dashboard based on data availability
+
+**Tính năng đặc biệt:**
+- ✅ **Session-based error preservation** qua redirects để maintain UX
+- ✅ **Conditional UI rendering** dựa trên channel existence  
+- ✅ **Real-time subscriber count** với efficient query
+- ✅ **POST-Redirect-GET pattern** để prevent double submission
+
+#### **📈 Bước 2: Channel Analytics Processing**
+📍 **File**: `Controllers/ChannelController.cs:110`
+```csharp
+public async Task<IActionResult> Analytics()
+{
+    var userId = User.GetUserId();
+    
+    // 🔍 Get user's channel
+    var channel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(
+        x => x.AppUserId == userId
+    );
+
+    if (channel == null)
+    {
+        return RedirectToAction("Index");
+    }
+
+    // 📊 Load analytics data with video views
+    var videos = await UnitOfWork.VideoRepo.GetAllAsync(
+        x => x.ChannelId == channel.Id,
+        includeProperties: "VideoViews"
+    );
+
+    var model = new ChannelAnalytics_vm
+    {
+        TotalVideos = videos.Count(),
+        TotalViews = videos.Sum(v => v.VideoViews.Count()),
+        AverageViewsPerVideo = videos.Any() ? 
+            videos.Average(v => v.VideoViews.Count()) : 0,
+        MostPopularVideo = videos
+            .OrderByDescending(v => v.VideoViews.Count())
+            .FirstOrDefault()
+    };
+
+    return View(model);
+}
+```
+
+**Flow chi tiết Analytics:**
+1. **User Verification**: Lấy user ID từ claims và verify channel ownership
+   - Sử dụng GetUserId() extension để extract từ authentication claims
+   - Query channel với userId để ensure security và ownership
+   - Redirect về Index nếu user chưa có channel
+2. **Performance Analytics**: Load all videos với VideoViews relationship
+   - Sử dụng includeProperties để eager load VideoViews efficiently
+   - Avoid N+1 query problem bằng cách load relation một lần
+   - Filter videos theo channelId để ensure data isolation
+3. **Statistical Computation**: Calculate các metrics quan trọng
+   - **Total Videos**: Simple count of channel's videos
+   - **Total Views**: Sum all VideoViews across all videos
+   - **Average Views**: Calculate mean views per video với null check
+   - **Most Popular**: OrderBy descending views để find top performer
+4. **Dashboard Rendering**: Populate ViewModel với computed analytics data
+
+**Tính năng Analytics:**
+- ✅ **Real-time view counting** từ VideoViews table
+- ✅ **Performance metrics** với efficient queries
+- ✅ **Data visualization ready** cho frontend charts
+- ✅ **Security isolation** chỉ show data của owner
+    }
+
+    // 🔍 Load user's channel
+    var channel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(
+        x => x.AppUserId == User.GetUserId(), 
+        includeProperties: "Subscribers"    // 👥 Include subscriber count
+    );
+
+    if (channel != null)
+    {
+        // 📊 Populate dashboard data
+        model.Name = channel.Name;
+        model.About = channel.About;
+        model.SubscribersCount = channel.Subscribers.Count();
+    }
+
+    return View(model);
+}
+```
+
 **Tính năng đặc biệt:**
 - ✅ **Session-based error preservation** qua redirects
 - ✅ **Conditional UI rendering** (create form vs dashboard)
@@ -176,6 +275,102 @@ public async Task<IActionResult> Index(string stringModel)
 ---
 
 ## 📝 Channel Creation Flow
+
+### 🎯 Chi Tiết Channel Creation Logic:
+
+#### **📝 Bước 1: Create Form Processing**
+📍 **File**: `Controllers/ChannelController.cs:52`
+```csharp
+[HttpPost]
+public async Task<IActionResult> CreateChannel(ChannelAddEdit_vm model)
+{
+    // ✅ Validate model state
+    if (!ModelState.IsValid)
+    {
+        // 📥 Collect validation errors
+        model.Errors = ModelState.Where(ms => ms.Value.Errors.Count > 0)
+            .Select(ms => new ModelError_vm
+            {
+                Key = ms.Key,
+                ErrorMessage = ms.Value.Errors.First().ErrorMessage
+            }).ToList();
+
+        // 💾 Store in session for preservation across redirect
+        HttpContext.Session.SetString("ChannelModelFromSession", 
+            JsonConvert.SerializeObject(model));
+
+        return RedirectToAction("Index");
+    }
+
+    // 🔍 Check for duplicate channel name
+    var duplicateChannel = await UnitOfWork.ChannelRepo.AnyAsync(
+        x => x.Name.ToLower() == model.Name.ToLower()
+    );
+
+    if (duplicateChannel)
+    {
+        // ❌ Add business logic error
+        ModelState.AddModelError("Name", "Channel name already exists");
+        
+        // 📥 Collect all errors including the new one
+        model.Errors = ModelState.Where(ms => ms.Value.Errors.Count > 0)
+            .Select(ms => new ModelError_vm
+            {
+                Key = ms.Key,
+                ErrorMessage = ms.Value.Errors.First().ErrorMessage
+            }).ToList();
+
+        // 💾 Persist errors in session
+        HttpContext.Session.SetString("ChannelModelFromSession", 
+            JsonConvert.SerializeObject(model));
+
+        return RedirectToAction("Index");
+    }
+
+    // 🎉 Create new channel
+    var channel = new Channel
+    {
+        Name = model.Name,
+        About = model.About,
+        AppUserId = User.GetUserId(),
+        CreatedAt = DateTime.Now
+    };
+
+    await UnitOfWork.ChannelRepo.AddAsync(channel);
+    await UnitOfWork.SaveAsync();
+
+    TempData["notification"] = "Channel created successfully!";
+    return RedirectToAction("Index");
+}
+```
+
+**Flow chi tiết Creation Process:**
+1. **Validation Layer**: Multi-level validation với comprehensive error handling
+   - **ModelState Check**: Validate all DataAnnotation rules trước
+   - **Error Collection**: Collect tất cả validation errors vào standardized format
+   - **Session Persistence**: Serialize errors để preserve qua POST-Redirect-GET pattern
+   - **Early Return**: Redirect về Index với errors nếu validation fails
+2. **Business Logic Validation**: Check duplicate name constraint
+   - **Case-insensitive Check**: Use ToLower() để avoid case sensitivity issues
+   - **Database Query**: Efficient AnyAsync() query để check existence only
+   - **Error Addition**: Add business error vào ModelState như validation error
+   - **Consistent Error Handling**: Same error collection và session storage pattern
+3. **Entity Creation**: Create Channel entity với proper relationships
+   - **Data Mapping**: Map from ViewModel to Entity với required fields
+   - **User Association**: Link channel với current user qua GetUserId()
+   - **Timestamp**: Set CreatedAt để track creation time
+   - **Repository Pattern**: Use UnitOfWork để maintain transaction consistency
+4. **Success Response**: Handle successful creation với user feedback
+   - **Database Persistence**: Save entity với UnitOfWork.SaveAsync()
+   - **User Notification**: Set TempData notification cho success message
+   - **Redirect**: Navigate về dashboard để show newly created channel
+
+**Tính năng đặc biệt Creation:**
+- ✅ **POST-Redirect-GET pattern** để prevent double submission
+- ✅ **Session-based error preservation** qua redirects
+- ✅ **Comprehensive validation** (client + server + business)
+- ✅ **Case-insensitive duplicate check** để ensure uniqueness
+- ✅ **Transactional consistency** với UnitOfWork pattern
 
 ### 📊 Channel Creation Flow Diagram
 ```
@@ -375,9 +570,9 @@ public class ChannelAddEdit_vm
                                             └─────────────────────────────────────────┘
 ```
 
-### 🎯 Chi Tiết Channel Edit:
+### 🎯 Chi Tiết Channel Edit Logic:
 
-#### **✏️ Edit Channel Processing**
+#### **✏️ Bước 1: Edit Channel Processing**
 📍 **File**: `Controllers/ChannelController.cs:93`
 ```csharp
 [HttpPost]
@@ -385,24 +580,73 @@ public async Task<IActionResult> EditChannel(ChannelAddEdit_vm model)
 {
     if (ModelState.IsValid)
     {
-        // 🔍 Find user's channel
-        var channel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(x => x.AppUserId == User.GetUserId());
+        // 🔍 Find user's channel for ownership verification
+        var channel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(
+            x => x.AppUserId == User.GetUserId()
+        );
         
         if (channel != null)
         {
             // 📝 Update channel properties
             channel.Name = model.Name;
             channel.About = model.About;
+            channel.UpdatedAt = DateTime.Now;  // Track modification time
+            
+            // 💾 Persist changes
             await UnitOfWork.CompleteAsync();
 
             // 🎉 Success notification
             TempData["notification"] = "true;Channel updated;Your channel is updated";
             return RedirectToAction("Index");
         }
+        else
+        {
+            // 🚨 Channel not found error
+            TempData["notification"] = "false;Not Found;Your channel was not found";
+            return RedirectToAction("Index");
+        }
     }
 
-    // ❌ Error handling
-    TempData["notification"] = "false;Not Found;Your channel was not found";
+    // ❌ Validation failed - collect errors
+    model.Errors = ModelState.Where(ms => ms.Value.Errors.Count > 0)
+        .Select(ms => new ModelError_vm
+        {
+            Key = ms.Key,
+            ErrorMessage = ms.Value.Errors.First().ErrorMessage
+        }).ToList();
+
+    // 💾 Store errors in session
+    HttpContext.Session.SetString("ChannelModelFromSession", 
+        JsonConvert.SerializeObject(model));
+    
+    return RedirectToAction("Index");
+}
+```
+
+**Flow chi tiết Edit Process:**
+1. **Validation Gate**: ModelState validation với comprehensive error handling
+   - **Server-side Validation**: Kiểm tra all DataAnnotation rules
+   - **Early Exit**: Return errors immediately nếu validation fails
+   - **Consistent Error Format**: Same error collection pattern như Create
+2. **Ownership Verification**: Security check để ensure user chỉ edit own channel
+   - **User Lookup**: Query channel theo current user ID từ claims
+   - **Security Layer**: Prevent unauthorized access to other user's channels
+   - **Not Found Handling**: Graceful error nếu channel không exist
+3. **Data Update**: Direct entity modification với tracked changes
+   - **Property Mapping**: Update Name và About từ ViewModel
+   - **Timestamp Update**: Track modification time cho audit trail
+   - **Change Tracking**: EF Core automatically track entity changes
+4. **Persistence & Response**: Save changes và provide user feedback
+   - **UnitOfWork Pattern**: Ensure transactional consistency
+   - **Success Notification**: TempData message cho user confirmation
+   - **Redirect Pattern**: POST-Redirect-GET để prevent double submission
+
+**Tính năng đặc biệt Edit:**
+- ✅ **Ownership verification** để ensure security
+- ✅ **Same validation pattern** như Create để maintain consistency
+- ✅ **Audit trail** với UpdatedAt timestamp
+- ✅ **Graceful error handling** cho edge cases
+- ✅ **Session error preservation** để maintain UX qua redirects
     return RedirectToAction("Index");
 }
 ```

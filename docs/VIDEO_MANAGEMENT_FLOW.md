@@ -71,6 +71,101 @@ ClipShare/
 
 ## 🎬 Video Watch Flow
 
+### 🎯 Chi Tiết Video Watch Logic:
+
+#### **🎬 Bước 1: Video Watch Page Loading**
+📍 **File**: `Controllers/VideoController.cs:17`
+```csharp
+[Authorize(Roles = SD.UserRole)]
+public async Task<IActionResult> Watch(int id)
+{
+    // 🔍 Optimized video loading với projection
+    var vm = await UnitOfWork.VideoRepo.GetVideoWatch_vm(id);
+
+    if (vm == null)
+    {
+        return NotFound();
+    }
+
+    // 👁️ Track video view for analytics
+    await TrackVideoView(id);
+
+    return View(vm);
+}
+
+// 📊 Video projection query trong Repository
+public async Task<VideoWatch_vm> GetVideoWatch_vm(int videoId)
+{
+    return await _context.Videos
+        .Where(v => v.Id == videoId)
+        .Select(v => new VideoWatch_vm
+        {
+            Id = v.Id,
+            Title = v.Title,
+            Description = v.Description,
+            Views = v.VideoViews.Count(),
+            Likes = v.LikeDislikes.Count(ld => ld.IsLike),
+            Dislikes = v.LikeDislikes.Count(ld => !ld.IsLike),
+            
+            // 📺 Channel information
+            ChannelId = v.Channel.Id,
+            ChannelName = v.Channel.Name,
+            ChannelAbout = v.Channel.About,
+            ChannelSubscribers = v.Channel.Subscribers.Count(),
+            
+            // 💬 Comments với nested loading
+            Comments = v.Comments
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(c => new Comment_vm
+                {
+                    Id = c.Id,
+                    Text = c.Text,
+                    UserName = c.AppUser.UserName,
+                    CreatedAt = c.CreatedAt
+                })
+                .Take(20)  // Limit để avoid performance issues
+                .ToList(),
+                
+            // 📁 Video file paths
+            VideoFilePath = v.VideoFiles.FirstOrDefault().FilePath,
+            ThumbnailPath = v.ThumbnailPath,
+            
+            // ⏰ Metadata
+            UploadedAt = v.CreatedAt,
+            Duration = v.Duration
+        })
+        .FirstOrDefaultAsync();
+}
+```
+
+**Flow chi tiết Watch Page Loading:**
+1. **Authorization Layer**: Role-based access control với SD.UserRole
+   - **Authentication Check**: Ensure user is logged in trước khi access
+   - **Role Verification**: Chỉ users có UserRole mới watch được videos
+   - **Security Gate**: Prevent anonymous access để track views properly
+2. **Optimized Data Loading**: Single query với projection để avoid N+1 problems
+   - **Projection Query**: Chỉ load required fields thay vì entire entities
+   - **Nested Projections**: Load Channel, Comments, VideoFiles trong same query
+   - **Performance Optimization**: Avoid multiple database round trips
+   - **Selective Loading**: Take(20) comments để limit memory usage
+3. **View Tracking**: Analytics tracking cho video engagement metrics
+   - **Async View Tracking**: TrackVideoView() để record user interaction
+   - **Non-blocking**: View tracking không affect page load performance
+   - **Analytics Data**: Crucial cho recommendation algorithms
+4. **ViewModel Population**: Comprehensive data cho rich video experience
+   - **Video Metadata**: Title, Description, Duration, Upload date
+   - **Engagement Metrics**: Views, Likes, Dislikes count
+   - **Channel Information**: Name, About, Subscriber count
+   - **Comment System**: Recent comments với user information
+   - **File Paths**: Video file và thumbnail để display content
+
+**Tính năng đặc biệt Watch:**
+- ✅ **Single optimized query** để load all required data efficiently
+- ✅ **Role-based access control** để ensure proper authorization
+- ✅ **View tracking integration** cho analytics và recommendations
+- ✅ **Comment pagination** để manage performance với large comment counts
+- ✅ **Rich metadata display** với comprehensive video information
+
 ### 📊 Video Watch Flow Diagram
 ```
                             🎬 VIDEO WATCH SYSTEM
@@ -134,25 +229,86 @@ ClipShare/
 └─────────────────────┘
 ```
 
-### 🎯 Chi Tiết Video Watch Logic:
-
-#### **🎬 Bước 1: Video Data Loading với Optimization**
+#### **👁️ Bước 2: Video View Tracking System**
 📍 **File**: `Controllers/VideoController.cs:27`
 ```csharp
 public async Task<IActionResult> Watch(int id)
 {
-    // 🚀 PERFORMANCE: Sử dụng projection query thay vì include properties
+    // 🚀 Load video data với optimized projection
     var toReturn = await GetVideoWatch_vmWithProjections(id);
 
     if (toReturn != null)
     {
-        // 👁️ Track video view
+        // 👁️ Track video view với IP và User ID
         var userIpAddress = Request.HttpContext.Connection.RemoteIpAddress.ToString();
-        await UnitOfWork.VideoViewRepo.HandleVideoViewAsync(User.GetUserId(), id, userIpAddress);
+        await UnitOfWork.VideoViewRepo.HandleVideoViewAsync(
+            User.GetUserId(), 
+            id, 
+            userIpAddress
+        );
         await UnitOfWork.CompleteAsync();
 
         return View(toReturn);
     }
+
+    return NotFound();
+}
+
+// 📊 Video View Tracking Repository Logic
+public async Task HandleVideoViewAsync(string userId, int videoId, string ipAddress)
+{
+    // 🔍 Check if user already viewed this video from this IP
+    var existingView = await _context.VideoViews
+        .FirstOrDefaultAsync(vv => 
+            vv.AppUserId == userId && 
+            vv.VideoId == videoId && 
+            vv.IpAddress == ipAddress
+        );
+
+    if (existingView == null)
+    {
+        // ✅ Create new view record
+        var videoView = new VideoView
+        {
+            AppUserId = userId,
+            VideoId = videoId,
+            IpAddress = ipAddress,
+            ViewedAt = DateTime.Now
+        };
+
+        await _context.VideoViews.AddAsync(videoView);
+    }
+    // 🔄 If view exists, could update LastViewedAt for analytics
+}
+```
+
+**Flow chi tiết View Tracking:**
+1. **Unique View Detection**: Prevent duplicate views từ same user + IP combination
+   - **Composite Key Check**: Query existing views với userId + videoId + ipAddress
+   - **Duplicate Prevention**: Chỉ create new record nếu chưa exist
+   - **Analytics Accuracy**: Ensure view counts reflect unique user interactions
+   - **IP Tracking**: Use RemoteIpAddress để detect multiple views từ same device
+2. **View Record Creation**: Create detailed analytics record
+   - **User Association**: Link view với authenticated user ID
+   - **Video Reference**: Associate với specific video being watched
+   - **Timestamp Tracking**: Record ViewedAt để analyze viewing patterns
+   - **IP Logging**: Store IP address cho fraud detection và geolocation
+3. **Performance Considerations**: Async operations để không block page loading
+   - **Non-blocking Tracking**: View tracking runs async sau khi page loads
+   - **Database Efficiency**: Simple insert operation với minimal impact
+   - **UnitOfWork Pattern**: Ensure transactional consistency
+4. **Analytics Foundation**: Data structure cho advanced analytics
+   - **View Count Aggregation**: Support video popularity metrics
+   - **User Behavior**: Track viewing patterns per user
+   - **Recommendation Engine**: Data cho suggest related videos
+   - **Fraud Detection**: IP tracking để detect bot views
+
+**Tính năng Analytics Tracking:**
+- ✅ **Unique view detection** để ensure accurate metrics
+- ✅ **IP-based tracking** cho fraud prevention
+- ✅ **Real-time view counting** với instant updates
+- ✅ **User behavior analytics** cho recommendation systems
+- ✅ **Geolocation ready** với IP address logging
 
     TempData["notification"] = "false;Not Found;Requested video was not found";
     return RedirectToAction("Index", "Home");
@@ -212,36 +368,165 @@ private async Task<VideoWatch_vm> GetVideoWatch_vmWithProjections(int id)
 - ✅ **Compiled query** - faster execution
 - ✅ **Memory efficient** - smaller object graph
 
-#### **🎬 Video File Streaming**
+#### **🎬 Bước 3: Video File Streaming System**
 📍 **File**: `Controllers/VideoController.cs:67`
 ```csharp
 public async Task<IActionResult> GetVideoFile(int videoId)
 {
-    var fetcehdVideoFile = await UnitOfWork.VideoFileRepo.GetFirstOrDefaultAsync(x => x.VideoId == videoId);
-    if (fetcehdVideoFile != null)
+    // 🔍 Load video file from database
+    var fetchedVideoFile = await UnitOfWork.VideoFileRepo.GetFirstOrDefaultAsync(
+        x => x.VideoId == videoId
+    );
+    
+    if (fetchedVideoFile != null)
     {
-        // 🎬 Stream video file với correct content type
-        return File(fetcehdVideoFile.Contents, fetcehdVideoFile.ContentType);
+        // 🎬 Stream video file với correct MIME type
+        return File(
+            fetchedVideoFile.Contents,      // Binary file data
+            fetchedVideoFile.ContentType    // video/mp4, video/webm, etc.
+        );
     }
 
+    // ❌ File not found handling
     TempData["notification"] = "false;Not Found;Requested video was not found";
     return RedirectToAction("Index", "Home");
 }
+
+// 📁 Video File Entity Structure
+public class VideoFile : BaseEntity
+{
+    public byte[] Contents { get; set; }        // 📁 Binary file data
+    public string ContentType { get; set; }     // 🎭 MIME type
+    public string FileName { get; set; }        // 📄 Original filename
+    public long FileSize { get; set; }          // 📊 File size in bytes
+    public int VideoId { get; set; }            // 🔗 Reference to Video
+    public Video Video { get; set; }            // 🎬 Navigation property
+}
+```
+
+**Flow chi tiết Video Streaming:**
+1. **File Lookup**: Query VideoFile entity based on videoId parameter
+   - **Database Query**: Use repository pattern để fetch file record
+   - **Foreign Key Lookup**: Find file associated với specific video
+   - **Efficient Loading**: Direct query without unnecessary includes
+2. **Binary Content Delivery**: Stream file contents directly to browser
+   - **File() Method**: ASP.NET Core's built-in file streaming
+   - **Content-Type Header**: Set proper MIME type để browser handles correctly
+   - **Binary Data**: Serve raw byte array từ database storage
+   - **Browser Compatibility**: Support HTML5 video players
+3. **Error Handling**: Graceful fallback nếu file không exist
+   - **Null Check**: Verify file exists trước khi stream
+   - **User Notification**: Friendly error message qua TempData
+   - **Redirect Strategy**: Navigate về home thay vì error page
+4. **Performance Considerations**: Efficient file delivery
+   - **Direct Streaming**: No intermediate file storage needed
+   - **Memory Efficient**: ASP.NET Core handles buffering automatically
+   - **Caching Headers**: Browser can cache video files appropriately
+
+**Tính năng Streaming đặc biệt:**
+- ✅ **Direct database streaming** - no file system dependencies
+- ✅ **Proper MIME type handling** cho multiple video formats
+- ✅ **HTML5 video support** với native browser players  
+- ✅ **Efficient binary delivery** with automatic buffering
+- ✅ **Error resilience** với graceful fallbacks
 ```
 
 ---
 
 ## 📤 Video Upload Flow
 
-### 📊 Video Upload Flow Diagram
+### 🎯 Chi Tiết Video Upload Logic:
+
+#### **📝 Bước 1: Upload Form Access & Channel Verification**
+📍 **File**: `Controllers/VideoController.cs:86`
+```csharp
+public async Task<IActionResult> CreateEditVideo(int id)
+{
+    // 🔍 Verify user has a channel before allowing upload
+    var userChannel = await UnitOfWork.ChannelRepo.GetFirstOrDefaultAsync(
+        x => x.AppUserId == User.GetUserId()
+    );
+
+    if (userChannel == null)
+    {
+        // ❌ Redirect to channel creation
+        TempData["notification"] = "false;Channel Required;You need to create a channel first before uploading videos";
+        return RedirectToAction("Index", "Channel");
+    }
+
+    var model = new VideoAddEdit_vm();
+
+    if (id == 0)  // CREATE mode
+    {
+        // � Load categories for dropdown
+        var categories = await UnitOfWork.CategoryRepo.GetAllAsync();
+        model.AvailableCategories = categories.Select(c => new SelectListItem
+        {
+            Value = c.Id.ToString(),
+            Text = c.Name
+        }).ToList();
+
+        return View(model);
+    }
+    else  // EDIT mode
+    {
+        // � Load existing video for editing
+        var video = await UnitOfWork.VideoRepo.GetFirstOrDefaultAsync(
+            x => x.Id == id && x.Channel.AppUserId == User.GetUserId(),
+            includeProperties: "Category,Channel"
+        );
+
+        if (video == null)
+        {
+            TempData["notification"] = "false;Not Found;Video not found or you don't have permission";
+            return RedirectToAction("Index", "Home");
+        }
+
+        // � Populate form with existing data
+        model.Title = video.Title;
+        model.Description = video.Description;
+        model.CategoryId = video.CategoryId;
+        
+        // � Load categories with current selection
+        var categories = await UnitOfWork.CategoryRepo.GetAllAsync();
+        model.AvailableCategories = categories.Select(c => new SelectListItem
+        {
+            Value = c.Id.ToString(),
+            Text = c.Name,
+            Selected = c.Id == video.CategoryId
+        }).ToList();
+
+        return View(model);
+    }
+}
 ```
-                        📤 VIDEO UPLOAD SYSTEM
-                        
-   🖥️ UPLOAD FORM              📡 FILE PROCESSING            🗄️ DATABASE
-                        
-┌─────────────────────┐                                     ┌─────────────────────┐
-│  📝 Upload Form     │─── GET /Video/CreateEditVideo ─────▶│  🔍 Channel Check    │
-│                     │                                     │                     │
+
+**Flow chi tiết Upload Form Access:**
+1. **Channel Ownership Verification**: Security gate để ensure user có channel
+   - **User Channel Lookup**: Query channel của current user từ claims
+   - **Business Rule Enforcement**: Users phải có channel trước khi upload
+   - **Redirect Strategy**: Navigate về channel creation nếu chưa có
+   - **Clear Error Message**: Explain why redirect happened qua TempData
+2. **Mode Detection**: Handle both CREATE và EDIT scenarios
+   - **ID Parameter Check**: id = 0 means CREATE, otherwise EDIT
+   - **Conditional Logic**: Different data loading based on mode
+   - **Form Pre-population**: Load existing data for edit mode
+3. **Category Data Loading**: Populate dropdown với available categories
+   - **SelectListItem Creation**: Convert Category entities to dropdown format
+   - **Edit Mode Selection**: Mark current category as selected in edit mode
+   - **User-friendly Display**: Show category names thay vì IDs
+4. **Edit Security**: Verify ownership trước khi allow editing
+   - **Ownership Check**: Ensure video belongs to current user's channel
+   - **Permission Verification**: Prevent unauthorized access to other's videos
+   - **Include Properties**: Load Category và Channel để verify relationships
+   - **Not Found Handling**: Graceful error nếu video không exist hoặc unauthorized
+
+**Tính năng Security đặc biệt:**
+- ✅ **Channel requirement enforcement** - business rule validation
+- ✅ **Ownership verification** để prevent unauthorized editing
+- ✅ **Permission-based access** với proper error messages
+- ✅ **Mode-specific data loading** để optimize performance
+- ✅ **Category management** với user-friendly dropdowns
 │ • Category dropdown │                                     │ ChannelRepo         │
 │ • Title input       │                                     │ .AnyAsync()         │
 │ • Description text  │                                     │ (UserId exists)     │

@@ -217,7 +217,7 @@ ClipShare/
 
 ### 🎯 Chi Tiết Từng Bước Code:
 
-#### **Bước 1: GET /Account/Login**
+#### **Bước 1: GET /Account/Login - Hiển thị Form Login**
 📍 **File**: `Controllers/AccountController.cs:40`
 ```csharp
 [HttpGet]
@@ -230,7 +230,17 @@ public IActionResult Login(string returnUrl = null)
     return View(loginVM);
 }
 ```
-**Mục đích:** Hiển thị form login với returnUrl để redirect về trang trước đó
+**Mục đích:** 
+- Hiển thị form login với returnUrl để redirect về trang trước đó
+- Khởi tạo ViewModel với ReturnUrl để preserve navigation state
+- Render HTML form với validation scripts và CSRF protection
+
+**Flow chi tiết:**
+1. User truy cập `/Account/Login` hoặc được redirect khi chưa authenticate
+2. Controller nhận returnUrl parameter từ query string
+3. Tạo Login_vm object với ReturnUrl được preserve
+4. Return view với model để render HTML form
+5. Client nhận HTML với form fields, validation scripts, và anti-forgery token
 
 #### **Bước 2: User Interface**
 📍 **File**: `Views/Account/Login.cshtml`
@@ -359,6 +369,25 @@ private async Task HandleSignInUserAsync(AppUser user)
 }
 ```
 
+**Flow chi tiết Claims Creation:**
+1. **Channel Lookup**: Query database để lấy Channel ID của user (cần cho authorization later)
+2. **Claims Building**: Tạo danh sách claims với thông tin user cần thiết
+   - `ClaimTypes.Name`: Username cho hiển thị
+   - `ClaimTypes.Email`: Email cho liên lạc
+   - `ClaimTypes.GivenName`: Display name (họ tên thật)
+   - `ClaimTypes.NameIdentifier`: User ID (primary key)
+   - `ClaimTypes.Sid`: Channel ID (cho authorization)
+3. **Role Integration**: Lấy tất cả roles của user từ database và add vào claims
+4. **Authentication Cookie**: Tạo secure HTTP-only cookie với 24h expiration
+5. **Session Establishment**: Thiết lập authentication context cho subsequent requests
+
+**Security Features:**
+- Claims được encrypted trong cookie
+- HTTP-only flag ngăn JavaScript access
+- Secure flag yêu cầu HTTPS
+- SameSite protection chống CSRF
+```
+
 ---
 
 ## 📝 Luồng Register
@@ -469,6 +498,67 @@ public async Task<IActionResult> Register(Register_vm model)
 
         // 🔍 Bước 4.2: Email Duplicate Check
         if (await CheckEmailExistsAsync(model.Email))
+        {
+            ModelState.AddModelError("Email", "Email address is already taken.");
+            return View(model);
+        }
+
+        // 🔍 Bước 4.3: Username Duplicate Check  
+        if (await CheckUsernameExistsAsync(model.Name))
+        {
+            ModelState.AddModelError("Name", "Name (Username) is already taken.");
+            return View(model);
+        }
+
+        // 👤 Bước 4.4: User Creation
+        var user = new AppUser()
+        {
+            UserName = model.Name.ToLower(),  // Lowercase để consistency
+            Email = model.Email.ToLower(),    // Lowercase để consistency  
+            Name = model.Name,                // Original case cho display
+        };
+
+        var result = await _userManager.CreateAsync(user, model.Password);
+
+        if (result.Succeeded)
+        {
+            // 🎭 Bước 4.5: Role Assignment
+            await _userManager.AddToRoleAsync(user, SD.UserRole);
+
+            // 🔄 Bước 4.6: Auto Login sau khi register
+            await HandleSignInUserAsync(user);
+
+            return RedirectToAction("Index", "Home");
+        }
+        else
+        {
+            // 🚨 Bước 4.7: Handle Creation Errors
+            foreach (var error in result.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error.Description);
+            }
+        }
+    }
+
+    return View(model);
+}
+```
+
+**Flow chi tiết Register Processing:**
+1. **Password Confirmation**: So sánh Password và ConfirmPassword fields
+2. **Email Uniqueness**: Query database kiểm tra email đã tồn tại chưa
+3. **Username Uniqueness**: Query database kiểm tra username đã tồn tại chưa
+4. **User Entity Creation**: Tạo AppUser object với data được normalize (lowercase)
+5. **Password Hashing**: UserManager tự động hash password trước khi lưu database
+6. **Role Assignment**: Gán role "User" cho account mới tạo
+7. **Auto Authentication**: Tự động đăng nhập user sau khi register thành công
+8. **Error Handling**: Display validation errors nếu có lỗi trong quá trình tạo user
+
+**Security Measures:**
+- Password được hash với ASP.NET Core Identity
+- Email và username được normalize về lowercase
+- CSRF protection với ValidateAntiForgeryToken
+- Comprehensive validation cả client và server side
         {
             ModelState.AddModelError("Email", $"Email address of {model.Email} is taken. Please try using another email address");
             return View(model);
