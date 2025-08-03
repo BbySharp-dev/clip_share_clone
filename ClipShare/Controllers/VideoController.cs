@@ -26,10 +26,10 @@ namespace ClipShare.Controllers
     [Authorize(Roles = $"{SD.UserRole}")] // Chỉ user đã đăng nhập mới truy cập được (UserRole bao gồm tất cả role)
     public class VideoController : CoreController
     {
-        // ===================== PHẦN 1: NGƯỜI 1 PHỤ TRÁCH =====================
+        // ===================== PHẦN 1: USER1 PHỤ TRÁCH =====================
         // Các chức năng: Xem video, tạo/sửa video, upload file, tải file, comment, lấy file video
 
-        // --- [NGƯỜI 1] Xem video ---
+        // --- [USER1] Xem video ---
         /// <summary>
         /// Hiển thị trang xem video với đầy đủ thông tin (comments, likes, views, channel info)
         /// Luồng: Lấy thông tin video -> Ghi nhận view -> Hiển thị trang watch
@@ -61,7 +61,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
-        // --- [NGƯỜI 1] Bình luận video ---
+        // --- [USER1] Bình luận video ---
         /// <summary>
         /// Tạo comment mới cho video
         /// Luồng: Tìm video -> Thêm comment mới -> Save -> Redirect về trang watch
@@ -88,7 +88,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
-        // --- [NGƯỜI 1] Lấy file video để phát ---
+        // --- [USER1] Lấy file video để phát ---
         /// <summary>
         /// Trả về file video để browser có thể phát (streaming)
         /// Dùng cho HTML5 video player hoặc các video player khác
@@ -109,7 +109,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
-        // --- [NGƯỜI 1] Tải file video về máy ---
+        // --- [USER1] Tải file video về máy ---
         /// <summary>
         /// Download video file về máy tính của user
         /// Khác với GetVideoFile (để phát), function này để download về máy
@@ -133,7 +133,7 @@ namespace ClipShare.Controllers
             return RedirectToAction("Index", "Home");
         }
 
-        // --- [NGƯỜI 1] Giao diện tạo/sửa video (GET) ---
+        // --- [USER1] Giao diện tạo/sửa video (GET) ---
         /// <summary>
         /// Hiển thị form để tạo mới hoặc chỉnh sửa video
         /// Luồng: Kiểm tra user có channel -> Load thông tin video (nếu edit) -> Chuẩn bị form
@@ -190,7 +190,7 @@ namespace ClipShare.Controllers
             return View(toReturn); // Trả về form với ViewModel đã chuẩn bị
         }
 
-        // --- [NGƯỜI 1] Xử lý tạo/sửa video (POST) ---
+        // --- [USER1] Xử lý tạo/sửa video (POST) ---
         /// <summary>
         /// Xử lý submit form tạo/sửa video (bao gồm upload file và validation)
         /// Luồng: Validate form -> Kiểm tra file upload -> Xử lý file -> Tạo/cập nhật video -> Save
@@ -332,11 +332,11 @@ namespace ClipShare.Controllers
             return View(model);
         }
 
-        // ===================== PHẦN 2: NGƯỜI 2 PHỤ TRÁCH =====================
+        // ===================== PHẦN 2: USER2 PHỤ TRÁCH =====================
         // Các chức năng: API lấy danh sách video, xóa video, like/dislike, subscribe channel
 
         #region API Endpoints
-        // --- [NGƯỜI 2] API lấy danh sách video cho channel (dùng cho grid) ---
+        // --- [USER2] API lấy danh sách video cho channel (dùng cho grid) ---
         /// <summary>
         /// API endpoint để lấy danh sách video của channel hiện tại (cho pagination grid)
         /// Được gọi từ AJAX để hiển thị video trong trang quản lý channel
@@ -359,7 +359,7 @@ namespace ClipShare.Controllers
             return Json(new ApiResponse(200, result: paginatedResults)); // Trả về JSON
         }
 
-        // --- [NGƯỜI 2] Xóa video (API) ---
+        // --- [USER2] Xóa video (API) ---
         /// <summary>
         /// API endpoint để xóa video (chỉ chủ video mới xóa được)
         /// Luồng: Kiểm tra ownership -> Xóa file thumbnail -> Xóa video khỏi DB -> Trả về JSON
@@ -391,7 +391,7 @@ namespace ClipShare.Controllers
         }
 
 
-        // --- [NGƯỜI 2] Đăng ký/hủy đăng ký kênh (API) ---
+        // --- [USER2] Đăng ký/hủy đăng ký kênh (API) ---
         /// <summary>
         /// API endpoint để subscribe/unsubscribe channel
         /// Luồng: Tìm channel -> Kiểm tra đã subscribe chưa -> Subscribe hoặc Unsubscribe -> Trả về JSON
@@ -430,7 +430,7 @@ namespace ClipShare.Controllers
             return Json(new ApiResponse(404, message: "Channel was not found")); // Channel không tồn tại
         }
 
-        // --- [NGƯỜI 2] Like/Dislike video (API) ---
+        // --- [USER2] Like/Dislike video (API) ---
         /// <summary>
         /// API endpoint để like/dislike video với logic phức tạp
         /// Luồng: Tìm video -> Kiểm tra trạng thái like/dislike hiện tại -> Cập nhật -> Trả về command cho frontend
